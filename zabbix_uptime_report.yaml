@@ -1,0 +1,24 @@
+---
+- name: Zabbix EGW.NET Uptime Report
+  hosts: localhost
+  gather_facts: false
+  vars:
+    REPORT_OUTPUT: "/tmp/egw_net_zabbix_report.csv"
+  tasks:
+    - name: Run uptime report script
+      command: python3 zabbix_uptime_report.py
+      environment:
+        ZABBIX_API_URL: "{{ lookup('env', 'ZABBIX_API_URL') }}"
+        ZABBIX_API_TOKEN: "{{ lookup('env', 'ZABBIX_API_TOKEN') }}"
+        REPORT_OUTPUT: "{{ REPORT_OUTPUT }}"
+
+    - name: Email the report
+      community.general.mail:
+        host: smtp.example.com
+        port: 25
+        to: you@example.com
+        from: awx@example.com
+        subject: "EGW.NET Zabbix 30-Day Uptime Report"
+        body: "Report attached."
+        attach:
+          - "{{ REPORT_OUTPUT }}"
