@@ -5,6 +5,13 @@
   vars:
     REPORT_OUTPUT: "/tmp/egw_net_zabbix_report.csv"
   tasks:
+    - name: Install requests and pandas
+      pip:
+        name:
+          - requests
+          - pandas
+        executable: python3
+      become: true
     - name: Run uptime report script
       command: python3 zabbix_uptime_report.py
       environment:
