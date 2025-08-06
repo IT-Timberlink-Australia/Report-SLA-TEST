@@ -14,11 +14,12 @@
 
     - name: Email the report
       community.general.mail:
-        host: smtp.example.com
-        port: 25
-        to: you@example.com
-        from: awx@example.com
-        subject: "EGW.NET Zabbix 30-Day Uptime Report"
-        body: "Report attached."
+        host: smtp.timberlinkaustralia.com.au    
+        port: 25               
+        to: "{{ (email_recipients | default(email_recipients_default))
+            | join(', ') }}"        
+        from: awx@timberlinkaustralia.com.au       
+        subject: "CMDB Device Report"
+        body: "Attached is the latest CMDB device count Excel report."
         attach:
           - "{{ REPORT_OUTPUT }}"
