@@ -12,6 +12,7 @@
           - pandas
         executable: python3
       become: true
+      
     - name: Run uptime report script
       command: python3 zabbix_uptime_report.py
       environment:
