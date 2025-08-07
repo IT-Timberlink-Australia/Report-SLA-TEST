@@ -4,22 +4,13 @@
   gather_facts: false
   vars:
     REPORT_OUTPUT: "/tmp/egw_net_zabbix_report.csv"
-  tasks:
-    - name: Install requests and pandas
-      pip:
-        name:
-          - requests
-          - pandas
-        executable: python3
-      become: true
-      
+    tasks:
     - name: Run uptime report script
       command: python3 zabbix_uptime_report.py
       environment:
         ZABBIX_API_URL: "{{ lookup('env', 'ZABBIX_API_URL') }}"
         ZABBIX_API_TOKEN: "{{ lookup('env', 'ZABBIX_API_TOKEN') }}"
         REPORT_OUTPUT: "{{ REPORT_OUTPUT }}"
-
     - name: Email the report
       community.general.mail:
         host: smtp.timberlinkaustralia.com.au    
