@@ -2,6 +2,7 @@
 - name: Zabbix EGW.NET Uptime Report
   hosts: localhost
   gather_facts: false
+  connection: local 
   tasks:
     - name: Run uptime report script
       command: python3 zabbix_uptime_report.py
