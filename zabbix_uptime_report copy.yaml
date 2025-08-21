@@ -1,0 +1,70 @@
+---
+- name: Zabbix EGW.NET Uptime Report
+  hosts: localhost
+  gather_facts: false
+  connection: local 
+  
+  vars:
+    report_out: "/runner/artifacts/{{ awx_job_id }}/egw_net_zabbix_report.xlsx"
+
+  tasks:
+    - name: Write SLA codes file
+      copy:
+        dest: "/runner/artifacts/{{ awx_job_id }}/sla_codes.yml"
+        content: |
+            sla_report_codes:
+              - code: egw.net
+                name: Gateway/Router (EGW)
+              - code: eap.svr
+                name: Application Server (EAP)
+              - code: ebk.svr
+                name: Backup Server (EBK)
+              - code: ecs.net
+                name: Camera Security (ECS)
+              - code: edb.svr
+                name: Database Server (EDB)
+              - code: ela.ows
+                name: Enterprise Laptop (ELA)
+              - code: efs.svr
+                name: File Server (EFS)
+              - code: egw.net	   
+                name: Gateway/Router (EGW)
+              - code: ens.sto
+                name: Network Attached Storage (ENS)
+              - code: esc.net
+                name: Network Switch - Core (ESC)
+              - code: ewe.net
+                name: Network Switch - Edge (EWE)
+              - code: san.sto
+                name: Storage Area Network (SAN)
+              - code: eps.ups
+                name: Uninterruptible Power Supply (EPS)
+              - code: evc.svr
+                name: Virtualization Controler (EVC)
+              - code: evh.phy
+                name: Virtualization Host (EVH)
+              - code: wae.aps
+                name: Wireless Access Equipment (WAE)
+              - code: wap.aps
+                name: Wireless Access Point (WAP)
+              - code: wpt.aps
+                name: Wireless Point to Point (WPT)
+
+    - name: Run uptime report script
+      environment:
+        ZABBIX_API_URL: "{{ lookup('env', 'ZABBIX_API_URL') }}"
+        ZABBIX_API_TOKEN: "{{ lookup('env', 'ZABBIX_API_TOKEN') }}"
+        REPORT_OUTPUT: "{{ report_out }}"
+        SLA_CODES_FILE: "/runner/artifacts/{{ awx_job_id }}/sla_codes.yml"
+      command: python3 zabbix_uptime_report.py
+
+    - name: Email the report
+      community.general.mail:
+        host: smtp.timberlinkaustralia.com.au    
+        port: 25               
+        to: "{{ (email_recipients | default(email_recipients_default) | default([])) | join(', ') }}"       
+        from: awx@timberlinkaustralia.com.au       
+        subject: "EGW.NET Zabbix 30-Day Uptime Report"
+        body: "Attached is the latest Uptime Report."
+        attach:
+          - "{{ report_out }}"
