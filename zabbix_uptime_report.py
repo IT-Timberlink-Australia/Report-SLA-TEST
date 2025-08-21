@@ -104,7 +104,7 @@ def build_dataset():
         for triggerid in icmp_trigger_ids:
             events = zabbix_api('event.get', {
                 "output": ["eventid", "clock", "r_eventid", "value"],
-                "select_acknowledges": ["clock", "message", "userid", "alias", "name"],
+                "select_acknowledges": ["clock", "message", "userid", "username", "name", "surname"],
                 "source": 0,  # triggers
                 "object": 0,  # triggers
                 "objectids": [triggerid],
@@ -135,12 +135,13 @@ def build_dataset():
                             if acks:
                                 acks_sorted = sorted(acks, key=lambda a: int(a.get("clock", 0)))
                                 ack_time = fmt_time(acks_sorted[0].get("clock"))
+
                                 note_parts = []
                                 for a in acks_sorted:
                                     ts = fmt_time(a.get("clock"))
-                                    user = a.get("alias") or a.get("name") or a.get("userid", "")
+                                    uname = a.get("username", "")[:2]  # <-- just first two letters
                                     msg = a.get("message", "").strip()
-                                    note_parts.append(f"[{ts}] {user}: {msg}" if msg else f"[{ts}] {user}")
+                                    note_parts.append(f"[{ts}] {uname}: {msg}" if msg else f"[{ts}] {uname}")
                                 ack_notes = " | ".join(note_parts)
 
                             trig = trig_map.get(triggerid, {})
