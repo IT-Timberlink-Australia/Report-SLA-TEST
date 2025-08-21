@@ -3,6 +3,8 @@ import os
 import requests
 import datetime
 import pandas as pd
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Environment variables from AWX (or set directly for local testing)
 ZABBIX_API_URL = os.environ.get('ZABBIX_API_URL')

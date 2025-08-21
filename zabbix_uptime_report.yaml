@@ -5,11 +5,16 @@
   connection: local 
   tasks:
     - name: Run uptime report script
-      command: python3 zabbix_uptime_report.py
+      vars:
+        report_out: "/runner/artifacts/{{ awx_job_id }}/egw_net_zabbix_report.xlsx"
       environment:
         ZABBIX_API_URL: "{{ lookup('env', 'ZABBIX_API_URL') }}"
         ZABBIX_API_TOKEN: "{{ lookup('env', 'ZABBIX_API_TOKEN') }}"
-        REPORT_OUTPUT: "/tmp/egw_net_zabbix_report.xlsx"
+        REPORT_OUTPUT: "{{ report_out }}"
+        TAG_KEY: "device"
+        TAG_VALUE: "egw.net"
+        DAYS: "30"
+      command: python3 zabbix_uptime_report.py
 
     - name: Email the report
       community.general.mail:
