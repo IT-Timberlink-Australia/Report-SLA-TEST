@@ -23,7 +23,8 @@ def zabbix_api(method, params):
         "id": 1,
         "auth": None  # Token-based auth does not require this
     }
-    r = requests.post(ZABBIX_API_URL, json=payload, headers=headers, verify=False)
+    # Add timeout=10 (10 seconds)
+    r = requests.post(ZABBIX_API_URL, json=payload, headers=headers, verify=False, timeout=10)
     r.raise_for_status()
     return r.json()['result']
 
