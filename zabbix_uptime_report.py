@@ -112,6 +112,7 @@ for hostid in hostids:
         if values:
             availability = 100.0 * sum(values) / len(values)
 
+
     results.append({
         "Hostname": hostmap[hostid],
         "Availability %": round(availability, 2),
