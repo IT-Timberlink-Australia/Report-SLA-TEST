@@ -204,7 +204,7 @@ def main():
     }
 
     if not df_full.empty:
-        df_export = df_full[~((df_full["Enabled"] == "No") & (df_full["Problems Raised"] == 0))].copy()
+        df_export = df_full[df_full["Problems Raised"] > 0].copy()
         if "Enabled" in df_export.columns:
             df_export.drop(columns=["Enabled"], inplace=True)
     else:
