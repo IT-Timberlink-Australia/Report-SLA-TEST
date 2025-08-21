@@ -104,6 +104,7 @@ def build_dataset():
         for triggerid in icmp_trigger_ids:
             events = zabbix_api('event.get', {
                 "output": ["eventid", "clock", "r_eventid", "value"],
+                "select_acknowledges": ["clock", "message"],
                 "source": 0,  # triggers
                 "object": 0,  # triggers
                 "objectids": [triggerid],
@@ -127,6 +128,20 @@ def build_dataset():
                             downtime_total += down_seconds
                             problem_count += 1
 
+                            # Extract acknowledges (if any)
+                            ack_time = ""
+                            ack_notes = ""
+                            acks = ev.get("acknowledges", []) or []
+                            if acks:
+                                # sort by time just in case; take earliest acknowledge as "Acknowledged time"
+                                acks_sorted = sorted(acks, key=lambda a: int(a.get("clock", 0)))
+                                ack_time = fmt_time(acks_sorted[0].get("clock"))
+                                # combine all non-empty messages (deduped) into a single notes field
+                                notes_list = [m.get("message", "").strip() for m in acks_sorted if m.get("message")]
+                                # keep order but drop duplicates
+                                seen = set()
+                                ack_notes = " | ".join([x for x in notes_list if not (x in seen or seen.add(x))])
+
                             trig = trig_map.get(triggerid, {})
                             sev = SEVERITY_MAP.get(int(trig.get("priority", 0)), str(trig.get("priority", 0)))
                             problem_details.append({
@@ -134,10 +149,11 @@ def build_dataset():
                                 "Severity": sev,
                                 "Status": "RESOLVED",
                                 "Duration": fmt_duration(down_seconds),
-                                "Alert Time": fmt_time(start_ts),
                                 "Problem": trig.get("description", "Unavailable by ICMP ping"),
-                                "Duration": fmt_duration(down_seconds),
+                                "Alert Time": fmt_time(start_ts),
+                                "Acknowledged time": ack_time,      # <-- new
                                 "Recovery time": fmt_time(end_ts),
+                                "Notes": ack_notes,                  # <-- new
                             })
 
         # Step 3: Calculate Availability % using icmpping item history
@@ -228,7 +244,7 @@ def write_excel_with_summary(df: pd.DataFrame, problem_details: list, path: str,
         details_start_row = 10 + 1 + len(df) + 5  # +1 for header row, +5 spacer rows
 
         # Build problem details DataFrame
-        details_cols = ["Host", "Severity", "Status", "Duration", "Problem", "Alert Time", "Recovery Time"]
+        details_cols = ["Host", "Severity", "Status", "Duration", "Problem", "Alert Time", "Acknowledged Time", "Recovery time", "Recovery Time", "Notes"]
         df_details = pd.DataFrame(problem_details, columns=details_cols)
 
         # Write header
