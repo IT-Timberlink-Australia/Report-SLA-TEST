@@ -21,9 +21,8 @@ def zabbix_api(method, params):
         "method": method,
         "params": params,
         "id": 1,
-        "auth": None  # Token-based auth does not require this
+        "auth": None
     }
-    # Add timeout=10 (10 seconds)
     r = requests.post(ZABBIX_API_URL, json=payload, headers=headers, verify=False, timeout=10)
     r.raise_for_status()
     return r.json()['result']
@@ -41,24 +40,29 @@ hostmap = {h["hostid"]: h["name"] for h in hosts}
 now = int(datetime.datetime.now().timestamp())
 start = int((datetime.datetime.now() - datetime.timedelta(days=DAYS)).timestamp())
 
-# Get ICMP Ping item for each host
+# Get ICMP Ping items for all hosts
 items = zabbix_api('item.get', {
     "output": ["itemid", "name", "hostid", "key_"],
     "hostids": hostids,
     "search": {"key_": "icmpping"},
 })
 
-# Calculate availability for each host
-results = []
+# --- Only one item per host ---
+item_map = {}
 for item in items:
-    # Fetch history (0=uint, 3=float; icmpping is usually uint)
+    if item["hostid"] not in item_map:
+        item_map[item["hostid"]] = item
+
+results = []
+for hostid, item in item_map.items():
+    # Fetch history
     history = zabbix_api('history.get', {
         "output": "extend",
-        "history": 0,  # 0 = numeric (unsigned)
+        "history": 0,
         "itemids": [item["itemid"]],
         "time_from": start,
         "time_till": now,
-        "limit": 100000  # Increase if you have lots of history data points
+        "limit": 100000
     })
     values = [float(h['value']) for h in history]
     if values:
@@ -66,10 +70,10 @@ for item in items:
     else:
         availability = 0.0
 
-    # Get problems for the host in this period
+    # Get all problems for this host
     problems = zabbix_api('problem.get', {
         "output": "extend",
-        "hostids": [item["hostid"]],
+        "hostids": [hostid],
         "time_from": start,
         "time_till": now,
     })
@@ -79,7 +83,7 @@ for item in items:
             total_downtime += int(p['duration']) // 60  # minutes
 
     results.append({
-        "Hostname": hostmap[item["hostid"]],
+        "Hostname": hostmap[hostid],
         "Availability %": round(availability, 2),
         "Problems Raised": len(problems),
         "Total Downtime (min)": total_downtime,
