@@ -32,7 +32,7 @@ def zabbix_api(method, params):
 hosts = zabbix_api('host.get', {
     "output": ["hostid", "name"],
     "selectTags": "extend",
-    "search": {"tags": [{"tag": TAG_KEY, "value": TAG_VALUE}]}
+    "tags": [{"tag": TAG_KEY, "value": TAG_VALUE}]
 })
 
 hostids = [h["hostid"] for h in hosts]
