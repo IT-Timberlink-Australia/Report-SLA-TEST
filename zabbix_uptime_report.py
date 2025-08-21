@@ -130,10 +130,11 @@ def build_dataset():
                             trig = trig_map.get(triggerid, {})
                             sev = SEVERITY_MAP.get(int(trig.get("priority", 0)), str(trig.get("priority", 0)))
                             problem_details.append({
-                                "Time": fmt_time(start_ts),
+                                "Host": hostmap[hostid],
                                 "Severity": sev,
                                 "Status": "RESOLVED",
-                                "Host": hostmap[hostid],
+                                "Duration": fmt_duration(down_seconds),
+                                "Time": fmt_time(start_ts),
                                 "Problem": trig.get("description", "Unavailable by ICMP ping"),
                                 "Duration": fmt_duration(down_seconds),
                                 "Recovery time": fmt_time(end_ts),
