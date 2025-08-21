@@ -228,7 +228,7 @@ def write_excel_with_summary(df: pd.DataFrame, problem_details: list, path: str,
         details_start_row = 10 + 1 + len(df) + 5  # +1 for header row, +5 spacer rows
 
         # Build problem details DataFrame
-        details_cols = ["Time", "Severity", "Status", "Host", "Problem", "Duration", "Recovery time"]
+        details_cols = ["Host", "Severity", "Status", "Duration", "Problem", "Time", "Recovery time"]
         df_details = pd.DataFrame(problem_details, columns=details_cols)
 
         # Write header
