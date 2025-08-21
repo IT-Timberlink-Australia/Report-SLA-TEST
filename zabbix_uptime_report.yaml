@@ -26,4 +26,4 @@
         subject: "EGW.NET Zabbix 30-Day Uptime Report"
         body: "Attached is the latest Uptime Report."
         attach:
-          - "/tmp/egw_net_zabbix_report.xlsx"
+          - "{{ report_out }}"
