@@ -100,6 +100,7 @@ for hostid in hostids:
     availability = 0.0
     if icmp_items:
         itemid = icmp_items[0]["itemid"]
+        # Try uint history (0) first
         history = zabbix_api('history.get', {
             "output": "extend",
             "history": 0,
@@ -109,9 +110,19 @@ for hostid in hostids:
             "limit": 100000
         })
         values = [float(h['value']) for h in history]
+        # If empty, try float history (3)
+        if not values:
+            history = zabbix_api('history.get', {
+                "output": "extend",
+                "history": 3,
+                "itemids": [itemid],
+                "time_from": start,
+                "time_till": now,
+                "limit": 100000
+            })
+            values = [float(h['value']) for h in history]
         if values:
             availability = 100.0 * sum(values) / len(values)
-
 
     results.append({
         "Hostname": hostmap[hostid],
