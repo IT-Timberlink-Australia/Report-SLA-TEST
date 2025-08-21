@@ -215,14 +215,16 @@ def write_excel_with_summary(df: pd.DataFrame, problem_details: list, path: str,
         workbook  = writer.book
         worksheet = writer.sheets[sheet_name]
 
-        h1 = workbook.add_format({"bold": True, "font_size": 14})
+        h1 = workbook.add_format({"bold": True, "font_size": 16})
         bold = workbook.add_format({"bold": True})
         pct2 = workbook.add_format({"num_format": "0.00"})
         int_fmt = workbook.add_format({"num_format": "0"})
         normal = workbook.add_format({})
 
-        worksheet.write("A1", f"Zabbix Availability Report (Tag {TAG_KEY}={TAG_VALUE})", h1)
-        worksheet.write("A2", f"Window: last {DAYS} days", normal)
+        worksheet.write("A1", f"SLA Availability Report", h1)
+        worksheet.write("A2", f"Time Frame: last {DAYS} days", normal)
+
+       
 
         worksheet.write("B6", "Enabled devices", bold)
         worksheet.write_number("C6", summary["enabled_devices"], int_fmt)
@@ -230,7 +232,10 @@ def write_excel_with_summary(df: pd.DataFrame, problem_details: list, path: str,
         worksheet.write("D6", "Total devices", bold)
         worksheet.write_number("E6", summary["total_devices"], int_fmt)
 
-        worksheet.write("D2", "Avg Availability (Enabled)", bold)
+        worksheet.write("D1", f"SLI Availability Target", h1)
+        worksheet.write("E1", f"95.00", h1)
+        worksheet.write("D2", "Total SLA", bold)
+         
         worksheet.write_number("E2", summary["avg_enabled_availability"], pct2)
 
         worksheet.write("B4", "Total problems (all)", bold)
