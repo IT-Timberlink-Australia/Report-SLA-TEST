@@ -20,12 +20,6 @@ TAG_KEY = os.environ.get('TAG_KEY', 'device')
 DAYS = int(os.environ.get('DAYS', '30'))
 OUTPUT_FILE = os.environ.get('REPORT_OUTPUT', '/tmp/egw_net_zabbix_report.xlsx')
 
-# YAML file with entries like:
-# sla_report_codes:
-#   - code: egw.net
-#     name: EGW Network
-#   - code: branch01
-#     name: Branch Office 01
 SLA_CODES_FILE = os.environ.get('SLA_CODES_FILE', '/runner/artifacts/sla_codes.yml')
 
 SEVERITY_MAP = {

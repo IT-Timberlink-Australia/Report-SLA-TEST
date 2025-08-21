@@ -8,14 +8,24 @@
     report_out: "/runner/artifacts/{{ awx_job_id }}/egw_net_zabbix_report.xlsx"
 
   tasks:
+    - name: Write SLA codes file
+      copy:
+        dest: "/runner/artifacts/{{ awx_job_id }}/sla_codes.yml"
+        content: |
+          sla_report_codes:
+            - code: egw.net
+              name: EGW Network
+            - code: branch01
+              name: Branch Office 01
+            - code: branch02
+              name: Branch Office 02
+
     - name: Run uptime report script
       environment:
         ZABBIX_API_URL: "{{ lookup('env', 'ZABBIX_API_URL') }}"
         ZABBIX_API_TOKEN: "{{ lookup('env', 'ZABBIX_API_TOKEN') }}"
         REPORT_OUTPUT: "{{ report_out }}"
-        TAG_KEY: "device"
-        TAG_VALUE: "egw.net"
-        DAYS: "30"
+        SLA_CODES_FILE: "/runner/artifacts/{{ awx_job_id }}/sla_codes.yml"
       command: python3 zabbix_uptime_report.py
 
     - name: Email the report
