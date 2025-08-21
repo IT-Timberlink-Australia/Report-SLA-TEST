@@ -29,7 +29,7 @@
               name: Enterprise Laptop (ELA)
             - code: efs.svr
               name: File Server (EFS)
-            - code: egw.net	   
+            - code: egw.net
               name: Gateway/Router (EGW)
             - code: ens.sto
               name: Network Attached Storage (ENS)
