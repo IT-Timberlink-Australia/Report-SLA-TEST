@@ -27,7 +27,7 @@ def zabbix_api(method, params):
     r.raise_for_status()
     return r.json()['result']
 
-# Get hosts with tag
+# Get hosts with the right tag
 hosts = zabbix_api('host.get', {
     "output": ["hostid", "name"],
     "selectTags": "extend",
@@ -40,56 +40,85 @@ hostmap = {h["hostid"]: h["name"] for h in hosts}
 now = int(datetime.datetime.now().timestamp())
 start = int((datetime.datetime.now() - datetime.timedelta(days=DAYS)).timestamp())
 
-# Get ICMP Ping items for all hosts
-items = zabbix_api('item.get', {
-    "output": ["itemid", "name", "hostid", "key_"],
-    "hostids": hostids,
-    "search": {"key_": "icmpping"},
-})
-
-# --- Only one item per host ---
-item_map = {}
-for item in items:
-    if item["hostid"] not in item_map:
-        item_map[item["hostid"]] = item
-
 results = []
-for hostid, item in item_map.items():
-    # Fetch history
-    history = zabbix_api('history.get', {
-        "output": "extend",
-        "history": 0,
-        "itemids": [item["itemid"]],
-        "time_from": start,
-        "time_till": now,
-        "limit": 100000
-    })
-    values = [float(h['value']) for h in history]
-    if values:
-        availability = 100.0 * sum(values) / len(values)
-    else:
-        availability = 0.0
-
-    # Get all problems for this host
-    problems = zabbix_api('problem.get', {
-        "output": "extend",
+for hostid in hostids:
+    # Step 1: Get ICMP triggers for this host
+    triggers = zabbix_api('trigger.get', {
         "hostids": [hostid],
-        "time_from": start,
-        "time_till": now,
+        "output": ["triggerid", "description"],
+        "search": {"description": "Unavailable by ICMP ping"},
+        "selectItems": ["itemid", "name", "key_"]
     })
-    total_downtime = 0
-    for p in problems:
-        if 'r_eventid' in p and p['r_eventid'] != "0":
-            total_downtime += int(p['duration']) // 60  # minutes
+    # If you have custom descriptions, adjust the search value above
+
+    icmp_trigger_ids = [t["triggerid"] for t in triggers]
+    if not icmp_trigger_ids:
+        results.append({
+            "Hostname": hostmap[hostid],
+            "Availability %": 0.0,
+            "Problems Raised": 0,
+            "Total Downtime (min)": 0,
+        })
+        continue
+
+    # Step 2: For each ICMP trigger, get all resolved problem events
+    problem_count = 0
+    downtime_total = 0
+    for triggerid in icmp_trigger_ids:
+        # Find problem events for this trigger
+        events = zabbix_api('event.get', {
+            "output": ["eventid", "clock", "r_eventid", "value"],
+            "source": 0,  # triggers
+            "object": 0,  # triggers
+            "objectids": [triggerid],
+            "time_from": start,
+            "time_till": now,
+            "value": 1,  # PROBLEM
+            "sortfield": ["clock"],
+            "sortorder": "ASC"
+        })
+        for ev in events:
+            if ev.get('r_eventid', '0') != "0":
+                # Fetch resolved event time
+                resolved_event = zabbix_api('event.get', {
+                    "output": ["eventid", "clock"],
+                    "eventids": [ev['r_eventid']]
+                })
+                if resolved_event:
+                    down_seconds = int(resolved_event[0]['clock']) - int(ev['clock'])
+                    downtime_total += down_seconds
+                    problem_count += 1
+
+    # Step 3: Calculate Availability %
+    # Get ICMP item for this host (first match)
+    icmp_items = zabbix_api('item.get', {
+        "output": ["itemid", "name", "hostid", "key_"],
+        "hostids": [hostid],
+        "search": {"key_": "icmpping"},
+        "limit": 1
+    })
+    availability = 0.0
+    if icmp_items:
+        itemid = icmp_items[0]["itemid"]
+        history = zabbix_api('history.get', {
+            "output": "extend",
+            "history": 0,
+            "itemids": [itemid],
+            "time_from": start,
+            "time_till": now,
+            "limit": 100000
+        })
+        values = [float(h['value']) for h in history]
+        if values:
+            availability = 100.0 * sum(values) / len(values)
 
     results.append({
         "Hostname": hostmap[hostid],
         "Availability %": round(availability, 2),
-        "Problems Raised": len(problems),
-        "Total Downtime (min)": total_downtime,
+        "Problems Raised": problem_count,
+        "Total Downtime (min)": round(downtime_total / 60),
     })
 
-# Output main table
 df = pd.DataFrame(results)
 df.to_csv(OUTPUT_FILE, index=False)
 print(f"Report written to {OUTPUT_FILE}")
