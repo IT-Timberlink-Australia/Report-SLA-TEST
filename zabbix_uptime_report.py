@@ -104,7 +104,7 @@ def build_dataset():
         for triggerid in icmp_trigger_ids:
             events = zabbix_api('event.get', {
                 "output": ["eventid", "clock", "r_eventid", "value"],
-                "select_acknowledges": ["clock", "message"],
+                "select_acknowledges": ["clock", "message", "userid", "alias", "name"],
                 "source": 0,  # triggers
                 "object": 0,  # triggers
                 "objectids": [triggerid],
@@ -133,14 +133,15 @@ def build_dataset():
                             ack_notes = ""
                             acks = ev.get("acknowledges", []) or []
                             if acks:
-                                # sort by time just in case; take earliest acknowledge as "Acknowledged time"
                                 acks_sorted = sorted(acks, key=lambda a: int(a.get("clock", 0)))
                                 ack_time = fmt_time(acks_sorted[0].get("clock"))
-                                # combine all non-empty messages (deduped) into a single notes field
-                                notes_list = [m.get("message", "").strip() for m in acks_sorted if m.get("message")]
-                                # keep order but drop duplicates
-                                seen = set()
-                                ack_notes = " | ".join([x for x in notes_list if not (x in seen or seen.add(x))])
+                                note_parts = []
+                                for a in acks_sorted:
+                                    ts = fmt_time(a.get("clock"))
+                                    user = a.get("alias") or a.get("name") or a.get("userid", "")
+                                    msg = a.get("message", "").strip()
+                                    note_parts.append(f"[{ts}] {user}: {msg}" if msg else f"[{ts}] {user}")
+                                ack_notes = " | ".join(note_parts)
 
                             trig = trig_map.get(triggerid, {})
                             sev = SEVERITY_MAP.get(int(trig.get("priority", 0)), str(trig.get("priority", 0)))
