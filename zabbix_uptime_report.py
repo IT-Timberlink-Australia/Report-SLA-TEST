@@ -134,7 +134,7 @@ def build_dataset():
                                 "Severity": sev,
                                 "Status": "RESOLVED",
                                 "Duration": fmt_duration(down_seconds),
-                                "Time": fmt_time(start_ts),
+                                "Alert Time": fmt_time(start_ts),
                                 "Problem": trig.get("description", "Unavailable by ICMP ping"),
                                 "Duration": fmt_duration(down_seconds),
                                 "Recovery time": fmt_time(end_ts),
@@ -228,7 +228,7 @@ def write_excel_with_summary(df: pd.DataFrame, problem_details: list, path: str,
         details_start_row = 10 + 1 + len(df) + 5  # +1 for header row, +5 spacer rows
 
         # Build problem details DataFrame
-        details_cols = ["Host", "Severity", "Status", "Duration", "Problem", "Time", "Recovery time"]
+        details_cols = ["Host", "Severity", "Status", "Duration", "Problem", "Alert Time", "Recovery Time"]
         df_details = pd.DataFrame(problem_details, columns=details_cols)
 
         # Write header
