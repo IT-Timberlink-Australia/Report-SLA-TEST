@@ -9,7 +9,7 @@
       environment:
         ZABBIX_API_URL: "{{ lookup('env', 'ZABBIX_API_URL') }}"
         ZABBIX_API_TOKEN: "{{ lookup('env', 'ZABBIX_API_TOKEN') }}"
-        REPORT_OUTPUT: "/tmp/egw_net_zabbix_report.csv"
+        REPORT_OUTPUT: "/tmp/egw_net_zabbix_report.xlsx"
 
     - name: Email the report
       community.general.mail:
@@ -21,4 +21,4 @@
         subject: "EGW.NET Zabbix 30-Day Uptime Report"
         body: "Attached is the latest Uptime Report."
         attach:
-          - "/tmp/egw_net_zabbix_report.csv"
+          - "/tmp/egw_net_zabbix_report.xlsx"
