@@ -16,6 +16,28 @@ TAG_VALUE = os.environ.get('TAG_VALUE', 'egw.net')
 DAYS = int(os.environ.get('DAYS', '30'))
 OUTPUT_FILE = os.environ.get('REPORT_OUTPUT', '/tmp/egw_net_zabbix_report.xlsx')
 
+SEVERITY_MAP = {
+    0: "Not classified",
+    1: "Information",
+    2: "Warning",
+    3: "Average",
+    4: "High",
+    5: "Disaster",
+}
+
+def fmt_time(ts: int) -> str:
+    try:
+        return datetime.datetime.fromtimestamp(int(ts)).strftime("%Y-%m-%d %H:%M:%S")
+    except Exception:
+        return str(ts)
+
+def fmt_duration(seconds: int) -> str:
+    seconds = int(seconds)
+    h = seconds // 3600
+    m = (seconds % 3600) // 60
+    s = seconds % 60
+    return f"{h:d}:{m:02d}:{s:02d}"
+
 # ---- Helpers ----
 def zabbix_api(method, params):
     headers = {
@@ -52,7 +74,7 @@ def build_dataset():
     })
 
     if not hosts:
-        return pd.DataFrame(columns=["Hostname", "Availability %", "Problems Raised", "Total Downtime (min)", "Enabled"])
+        return pd.DataFrame(columns=["Hostname", "Availability %", "Problems Raised", "Total Downtime (min)", "Enabled"]), []
 
     hostids = [h["hostid"] for h in hosts]
     hostmap = {h["hostid"]: h["name"] for h in hosts}
@@ -62,14 +84,17 @@ def build_dataset():
     start = epoch_days_ago(DAYS)
 
     results = []
+    problem_details = []
+
     for hostid in hostids:
-        # Step 1: Get ICMP triggers for this host
+        # Step 1: Get ICMP triggers for this host (include priority for severity)
         triggers = zabbix_api('trigger.get', {
             "hostids": [hostid],
-            "output": ["triggerid", "description"],
+            "output": ["triggerid", "description", "priority"],
             "search": {"description": "Unavailable by ICMP ping"},
             "selectItems": ["itemid", "name", "key_"]
         })
+        trig_map = {t["triggerid"]: t for t in triggers}
 
         icmp_trigger_ids = [t["triggerid"] for t in triggers if t.get("triggerid")]
         problem_count = 0
@@ -79,12 +104,12 @@ def build_dataset():
         for triggerid in icmp_trigger_ids:
             events = zabbix_api('event.get', {
                 "output": ["eventid", "clock", "r_eventid", "value"],
-                "source": 0,
-                "object": 0,
+                "source": 0,  # triggers
+                "object": 0,  # triggers
                 "objectids": [triggerid],
                 "time_from": start,
                 "time_till": now,
-                "value": 1,
+                "value": 1,  # PROBLEM
                 "sortfield": ["clock"],
                 "sortorder": "ASC"
             })
@@ -95,10 +120,24 @@ def build_dataset():
                         "eventids": [ev['r_eventid']]
                     })
                     if resolved_event:
-                        down_seconds = int(resolved_event[0]['clock']) - int(ev['clock'])
+                        start_ts = int(ev['clock'])
+                        end_ts = int(resolved_event[0]['clock'])
+                        down_seconds = end_ts - start_ts
                         if down_seconds > 0:
                             downtime_total += down_seconds
                             problem_count += 1
+
+                            trig = trig_map.get(triggerid, {})
+                            sev = SEVERITY_MAP.get(int(trig.get("priority", 0)), str(trig.get("priority", 0)))
+                            problem_details.append({
+                                "Time": fmt_time(start_ts),
+                                "Severity": sev,
+                                "Status": "RESOLVED",
+                                "Host": hostmap[hostid],
+                                "Problem": trig.get("description", "Unavailable by ICMP ping"),
+                                "Duration": fmt_duration(down_seconds),
+                                "Recovery time": fmt_time(end_ts),
+                            })
 
         # Step 3: Calculate Availability % using icmpping item history
         availability = 0.0
@@ -110,6 +149,7 @@ def build_dataset():
         })
         if icmp_items:
             itemid = icmp_items[0]["itemid"]
+            # Try uint (0) first
             history = zabbix_api('history.get', {
                 "output": "extend",
                 "history": 0,
@@ -119,6 +159,7 @@ def build_dataset():
                 "limit": 100000
             })
             values = [float(h['value']) for h in history]
+            # If empty, try float (3)
             if not values:
                 history = zabbix_api('history.get', {
                     "output": "extend",
@@ -143,11 +184,13 @@ def build_dataset():
     df = pd.DataFrame(results)
     if not df.empty:
         df = df.sort_values(by=["Hostname"], kind="stable").reset_index(drop=True)
-    return df
+    return df, problem_details
 
-def write_excel_with_summary(df: pd.DataFrame, path: str, summary: dict):
+def write_excel_with_summary(df: pd.DataFrame, problem_details: list, path: str, summary: dict):
     with pd.ExcelWriter(path, engine="xlsxwriter") as writer:
         sheet_name = "Report"
+
+        # Write main results table at row 11
         df.to_excel(writer, sheet_name=sheet_name, startrow=10, index=False)
 
         workbook  = writer.book
@@ -177,8 +220,41 @@ def write_excel_with_summary(df: pd.DataFrame, path: str, summary: dict):
         worksheet.write("B5", "Total downtime (min, all)", bold)
         worksheet.write_number("C5", summary["downtime_total_min"], int_fmt)
 
+        worksheet.write("A10", "Devices with < 100% Uptime", bold)
+
+        # Determine where to put the Problem Details section:
+        # data_header_row = 10, data_rows = len(df)
+        details_start_row = 10 + 1 + len(df) + 5  # +1 for header row, +5 spacer rows
+
+        # Build problem details DataFrame
+        details_cols = ["Time", "Severity", "Status", "Host", "Problem", "Duration", "Recovery time"]
+        df_details = pd.DataFrame(problem_details, columns=details_cols)
+
+        # Write header
+        for col_idx, col in enumerate(details_cols):
+            worksheet.write(details_start_row, col_idx, col, bold)
+
+        # Write rows
+        for r_idx, row in df_details.iterrows():
+            for c_idx, col in enumerate(details_cols):
+                worksheet.write(details_start_row + 1 + r_idx, c_idx, row[col])
+
+        # Autofit-ish columns across BOTH tables
+        combined_cols = list(df.columns)  # main table cols
+        for c in details_cols:
+            if c not in combined_cols:
+                combined_cols.append(c)
+
+        # Compute max width per combined column name across df and df_details
         for col_idx, col in enumerate(df.columns.tolist()):
-            width = max(12, min(50, int(max([len(str(col))] + [len(str(v)) for v in df[col].astype(str).tolist()]) * 1.1)))
+            width = max(12, min(60, int(max([len(str(col))] + [len(str(v)) for v in df[col].astype(str).tolist()]) * 1.1)))
+            worksheet.set_column(col_idx, col_idx, width)
+
+        # For detail columns, set widths appropriately (may overlap indexes if different columns)
+        # We'll set based on their index positions starting at 0 as well
+        for col_idx, col in enumerate(details_cols):
+            col_values = df_details[col].astype(str).tolist() if not df_details.empty else []
+            width = max(12, min(80, int(max([len(str(col))] + [len(v) for v in col_values]) * 1.1)))
             worksheet.set_column(col_idx, col_idx, width)
 
         worksheet.freeze_panes(11, 0)
@@ -186,8 +262,10 @@ def write_excel_with_summary(df: pd.DataFrame, path: str, summary: dict):
     return {"summary": summary, "output_file": path}
 
 def main():
-    df_full = build_dataset()
+    # Build full dataset and collect problem details
+    df_full, problem_details = build_dataset()
 
+    # ---- Summary based on ALL devices with the tag ----
     total_devices = len(df_full)
     enabled_count = int((df_full["Enabled"] == "Yes").sum()) if not df_full.empty else 0
     enabled_avail = df_full.loc[df_full["Enabled"] == "Yes", "Availability %"] if not df_full.empty else pd.Series(dtype=float)
@@ -203,6 +281,8 @@ def main():
         "downtime_total_min": downtime_total_min,
     }
 
+    # ---- Filtering for Excel output ----
+    # Keep ONLY hosts that had at least one problem in the window
     if not df_full.empty:
         df_export = df_full[df_full["Problems Raised"] > 0].copy()
         if "Enabled" in df_export.columns:
@@ -210,7 +290,7 @@ def main():
     else:
         df_export = df_full
 
-    result = write_excel_with_summary(df_export, OUTPUT_FILE, summary)
+    result = write_excel_with_summary(df_export, problem_details, OUTPUT_FILE, summary)
     print(f"Excel report written to {result['output_file']}")
     print(f"Summary: {result['summary']}")
 
