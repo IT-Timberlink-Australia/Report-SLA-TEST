@@ -3,10 +3,12 @@
   hosts: localhost
   gather_facts: false
   connection: local 
+  
+  vars:
+    report_out: "/runner/artifacts/{{ awx_job_id }}/egw_net_zabbix_report.xlsx"
+
   tasks:
     - name: Run uptime report script
-      vars:
-        report_out: "/runner/artifacts/{{ awx_job_id }}/egw_net_zabbix_report.xlsx"
       environment:
         ZABBIX_API_URL: "{{ lookup('env', 'ZABBIX_API_URL') }}"
         ZABBIX_API_TOKEN: "{{ lookup('env', 'ZABBIX_API_TOKEN') }}"
@@ -20,8 +22,7 @@
       community.general.mail:
         host: smtp.timberlinkaustralia.com.au    
         port: 25               
-        to: "{{ (email_recipients | default(email_recipients_default))
-            | join(', ') }}"        
+        to: "{{ (email_recipients | default(email_recipients_default) | default([])) | join(', ') }}"       
         from: awx@timberlinkaustralia.com.au       
         subject: "EGW.NET Zabbix 30-Day Uptime Report"
         body: "Attached is the latest Uptime Report."
