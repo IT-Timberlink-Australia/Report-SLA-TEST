@@ -4,6 +4,8 @@ import requests
 import datetime
 import pandas as pd
 import urllib3
+
+# Silence TLS warnings due to verify=False (fix certs properly later if possible)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Environment variables from AWX (or set directly for local testing)
@@ -77,12 +79,12 @@ def build_dataset():
         for triggerid in icmp_trigger_ids:
             events = zabbix_api('event.get', {
                 "output": ["eventid", "clock", "r_eventid", "value"],
-                "source": 0,  # triggers
-                "object": 0,  # triggers
+                "source": 0,
+                "object": 0,
                 "objectids": [triggerid],
                 "time_from": start,
                 "time_till": now,
-                "value": 1,  # PROBLEM
+                "value": 1,
                 "sortfield": ["clock"],
                 "sortorder": "ASC"
             })
@@ -108,7 +110,6 @@ def build_dataset():
         })
         if icmp_items:
             itemid = icmp_items[0]["itemid"]
-            # Try uint (0) first
             history = zabbix_api('history.get', {
                 "output": "extend",
                 "history": 0,
@@ -118,7 +119,6 @@ def build_dataset():
                 "limit": 100000
             })
             values = [float(h['value']) for h in history]
-            # If empty, try float (3)
             if not values:
                 history = zabbix_api('history.get', {
                     "output": "extend",
@@ -141,87 +141,76 @@ def build_dataset():
         })
 
     df = pd.DataFrame(results)
-    # Sort by Hostname for stable output
     if not df.empty:
         df = df.sort_values(by=["Hostname"], kind="stable").reset_index(drop=True)
     return df
 
-def write_excel_with_summary(df: pd.DataFrame, path: str):
-    # Compute summary metrics
-    total_devices = len(df)
-    enabled_mask = (df["Enabled"] == "Yes") if not df.empty else pd.Series(dtype=bool)
-    enabled_count = int(enabled_mask.sum()) if not df.empty else 0
-
-    # Availability average ONLY for enabled devices
-    enabled_avail = df.loc[enabled_mask, "Availability %"] if not df.empty else pd.Series(dtype=float)
-    avg_enabled_avail = round(float(enabled_avail.mean()), 2) if not enabled_avail.empty else 0.0
-
-    problems_total = int(df["Problems Raised"].sum()) if not df.empty else 0
-    downtime_total_min = int(df["Total Downtime (min)"].sum()) if not df.empty else 0
-
-    # Write to Excel with specific layout
+def write_excel_with_summary(df: pd.DataFrame, path: str, summary: dict):
     with pd.ExcelWriter(path, engine="xlsxwriter") as writer:
         sheet_name = "Report"
-        df.to_excel(writer, sheet_name=sheet_name, startrow=10, index=False)  # Data starts at row 11 (0-indexed startrow=10)
+        df.to_excel(writer, sheet_name=sheet_name, startrow=10, index=False)
 
         workbook  = writer.book
         worksheet = writer.sheets[sheet_name]
 
-        # Formats
         h1 = workbook.add_format({"bold": True, "font_size": 14})
         bold = workbook.add_format({"bold": True})
-        percent_fmt = workbook.add_format({"num_format": "0.00%"})
         pct2 = workbook.add_format({"num_format": "0.00"})
         int_fmt = workbook.add_format({"num_format": "0"})
         normal = workbook.add_format({})
 
-        # Title / Date range
-        title = f"Zabbix Availability Report (Tag {TAG_KEY}={TAG_VALUE})"
-        date_range = f"Window: last {DAYS} days"
-        worksheet.write("A1", title, h1)
-        worksheet.write("A2", date_range, normal)
+        worksheet.write("A1", f"Zabbix Availability Report (Tag {TAG_KEY}={TAG_VALUE})", h1)
+        worksheet.write("A2", f"Window: last {DAYS} days", normal)
 
-        # Summary cells as per earlier spec:
-        # C6: count of enabled devices
         worksheet.write("B6", "Enabled devices", bold)
-        worksheet.write_number("C6", enabled_count, int_fmt)
+        worksheet.write_number("C6", summary["enabled_devices"], int_fmt)
 
-        # E6: total count of ALL devices
         worksheet.write("D6", "Total devices", bold)
-        worksheet.write_number("E6", total_devices, int_fmt)
+        worksheet.write_number("E6", summary["total_devices"], int_fmt)
 
-        # E2: Total availability (average) of only enabled devices
         worksheet.write("D2", "Avg Availability (Enabled)", bold)
-        worksheet.write_number("E2", avg_enabled_avail, pct2)
+        worksheet.write_number("E2", summary["avg_enabled_availability"], pct2)
 
-        # Extra helpful stats (optional but non-invasive)
         worksheet.write("B4", "Total problems (all)", bold)
-        worksheet.write_number("C4", problems_total, int_fmt)
-        worksheet.write("B5", "Total downtime (min, all)", bold)
-        worksheet.write_number("C5", downtime_total_min, int_fmt)
+        worksheet.write_number("C4", summary["problems_total"], int_fmt)
 
-        # Autofit-ish columns
-        for col_idx, col in enumerate(["Hostname", "Availability %", "Problems Raised", "Total Downtime (min)", "Enabled"]):
+        worksheet.write("B5", "Total downtime (min, all)", bold)
+        worksheet.write_number("C5", summary["downtime_total_min"], int_fmt)
+
+        for col_idx, col in enumerate(df.columns.tolist()):
             width = max(12, min(50, int(max([len(str(col))] + [len(str(v)) for v in df[col].astype(str).tolist()]) * 1.1)))
             worksheet.set_column(col_idx, col_idx, width)
 
-        # Freeze panes so header row stays visible; data header is row 11 -> freeze below row 11
         worksheet.freeze_panes(11, 0)
 
-    return {
-        "summary": {
-            "total_devices": total_devices,
-            "enabled_devices": enabled_count,
-            "avg_enabled_availability": avg_enabled_avail,
-            "problems_total": problems_total,
-            "downtime_total_min": downtime_total_min,
-        },
-        "output_file": path
-    }
+    return {"summary": summary, "output_file": path}
 
 def main():
-    df = build_dataset()
-    result = write_excel_with_summary(df, OUTPUT_FILE)
+    df_full = build_dataset()
+
+    total_devices = len(df_full)
+    enabled_count = int((df_full["Enabled"] == "Yes").sum()) if not df_full.empty else 0
+    enabled_avail = df_full.loc[df_full["Enabled"] == "Yes", "Availability %"] if not df_full.empty else pd.Series(dtype=float)
+    avg_enabled_avail = round(float(enabled_avail.mean()), 2) if not enabled_avail.empty else 0.0
+    problems_total = int(df_full["Problems Raised"].sum()) if not df_full.empty else 0
+    downtime_total_min = int(df_full["Total Downtime (min)"].sum()) if not df_full.empty else 0
+
+    summary = {
+        "total_devices": total_devices,
+        "enabled_devices": enabled_count,
+        "avg_enabled_availability": avg_enabled_avail,
+        "problems_total": problems_total,
+        "downtime_total_min": downtime_total_min,
+    }
+
+    if not df_full.empty:
+        df_export = df_full[~((df_full["Enabled"] == "No") & (df_full["Problems Raised"] == 0))].copy()
+        if "Enabled" in df_export.columns:
+            df_export.drop(columns=["Enabled"], inplace=True)
+    else:
+        df_export = df_full
+
+    result = write_excel_with_summary(df_export, OUTPUT_FILE, summary)
     print(f"Excel report written to {result['output_file']}")
     print(f"Summary: {result['summary']}")
 
