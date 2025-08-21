@@ -1,0 +1,37 @@
+sla_report_codes:
+  - code: egw.net
+    name: Gateway/Router (EGW)
+  - code: eap.svr
+    name: Application Server (EAP)
+  - code: ebk.svr
+    name: Backup Server (EBK)
+  - code: ecs.net
+    name: Camera Security (ECS)
+  - code: edb.svr
+    name: Database Server (EDB)
+  - code: ela.ows
+    name: Enterprise Laptop (ELA)
+  - code: efs.svr
+    name: File Server (EFS)
+  - code: egw.net	   
+    name: Gateway/Router (EGW)
+  - code: ens.sto
+    name: Network Attached Storage (ENS)
+  - code: esc.net
+    name: Network Switch - Core (ESC)
+  - code: ewe.net
+    name: Network Switch - Edge (EWE)
+  - code: san.sto
+    name: Storage Area Network (SAN)
+  - code: eps.ups
+    name: Uninterruptible Power Supply (EPS)
+  - code: evc.svr
+    name: Virtualization Controler (EVC)
+  - code: evh.phy
+    name: Virtualization Host (EVH)
+  - code: wae.aps
+    name: Wireless Access Equipment (WAE)
+  - code: wap.aps
+    name: Wireless Access Point (WAP)
+  - code: wpt.aps
+    name: Wireless Point to Point (WPT)
