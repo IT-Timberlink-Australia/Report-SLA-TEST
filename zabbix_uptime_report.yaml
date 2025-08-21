@@ -58,8 +58,8 @@
         ZABBIX_API_TOKEN: "{{ lookup('env', 'ZABBIX_API_TOKEN') }}"
         REPORT_OUTPUT: "{{ report_out }}"
         SLA_CODES_FILE: "{{ sla_codes_path }}"
-        TAG_KEY: "{{ lookup('env', 'TAG_KEY') | default('device') }}"
-        DAYS: "{{ lookup('env', 'DAYS') | default('30') }}"
+        TAG_KEY: "{{ lookup('env', 'TAG_KEY') | default('device', true) }}"
+        DAYS: "{{ lookup('env', 'DAYS') | default('30', true) }}"
       command: python3 zabbix_uptime_report.py
 
     - name: Email the report
