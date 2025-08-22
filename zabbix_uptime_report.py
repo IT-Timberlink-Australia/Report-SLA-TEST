@@ -216,7 +216,7 @@ def build_dataset_for_code(tag_value: str, start: int, now: int, window_seconds:
         adjusted_downtime = max(0, total_problem_seconds - maint_overlap)
 
         # -------- SLA availability --------
-        availability = 100.0 * (1.0 - (adjusted_downtime / max(1, window_seconds)))
+        availability = 100.00 * (1.0 - (adjusted_downtime / max(1, window_seconds)))
 
         results.append({
             "Hostname": hostmap[hostid],
@@ -237,15 +237,15 @@ def write_sheet(df: pd.DataFrame,
                 writer: pd.ExcelWriter,
                 summary: dict,
                 sheet_title: str):
-    sheet_name = sanitize_sheet_name(sheet_title)  # safety
+    sheet_name = sanitize_sheet_name(sheet_title)
     df.to_excel(writer, sheet_name=sheet_name, startrow=10, index=False)
 
     workbook  = writer.book
     worksheet = writer.sheets[sheet_name]
 
-    h1 = workbook.add_format({"bold": True, "font_size": 16})
+    h1   = workbook.add_format({"bold": True, "font_size": 16})
     bold = workbook.add_format({"bold": True})
-    pct2 = workbook.add_format({"num_format": "0.00"})
+    pct2 = workbook.add_format({"num_format": "0.00%"})  # percentage format
     int_fmt = workbook.add_format({"num_format": "0"})
 
     # Headers & summary
@@ -255,11 +255,14 @@ def write_sheet(df: pd.DataFrame,
     worksheet.write("B6", "Enabled devices", bold)
     worksheet.write_number("C6", summary["enabled_devices"], int_fmt)
 
-    worksheet.write("D6", "Total devices", bold)
-    worksheet.write_number("E6", summary["total_devices"], int_fmt)
+    worksheet.write("B7", "Total devices", bold)
+    worksheet.write_number("C7", summary["total_devices"], int_fmt)
 
-    worksheet.write("D2", "Avg Availability (Enabled)", bold)
-    worksheet.write_number("E2", summary["avg_enabled_availability"], pct2)
+    # >>> changed block <<<
+    worksheet.write("D2", "SLA - Availability", h1)     # bigger + bold
+    worksheet.write_number("E2", summary["avg_enabled_availability"]/100.0, pct2)
+    # divide by 100 because we store it as 99.85 not 0.9985
+    # <<<<<<<<<<<<<<<<<<<<<<
 
     worksheet.write("B4", "Total problems (all)", bold)
     worksheet.write_number("C4", summary["problems_total"], int_fmt)
@@ -296,7 +299,7 @@ def write_sheet(df: pd.DataFrame,
 
 def write_summary_sheet(writer: pd.ExcelWriter, rows: list):
     sheet_name = "Summary"
-    df_sum = pd.DataFrame(rows, columns=["Group", "Avg Availability (Enabled)"])
+    df_sum = pd.DataFrame(rows, columns=["Group", "SLA - Availability"])
     df_sum.sort_values(by="Group", inplace=True, kind="stable")
     df_sum.reset_index(drop=True, inplace=True)
     df_sum.to_excel(writer, sheet_name=sheet_name, startrow=0, index=False)
