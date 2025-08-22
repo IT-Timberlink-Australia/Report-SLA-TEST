@@ -1,45 +1,92 @@
 ---
-- name: Zabbix SLA Multi-Report (NetBox-driven)
+- name: Zabbix SLA Multi-Report (NetBox-driven via API)
   hosts: localhost
   gather_facts: false
   connection: local
-  collections:
-    - netbox.netbox
 
   vars:
     report_out: "/runner/artifacts/{{ awx_job_id }}/sla_multi_report.xlsx"
     sla_codes_path: "/runner/artifacts/{{ awx_job_id }}/sla_codes.yml"
-
-  pre_tasks:
-    - name: Resolve NetBox API endpoint/token from vars or env (credential)
-      set_fact:
-        netbox_api: "{{ NETBOX_API | default(lookup('env','NETBOX_API'), true) }}"
-        netbox_token: "{{ NETBOX_TOKEN | default(lookup('env','NETBOX_TOKEN'), true) }}"
-
-    - name: Assert NetBox creds are present
-      assert:
-        that:
-          - (netbox_api | length) > 0
-          - (netbox_token | length) > 0
-        fail_msg: "NETBOX_API / NETBOX_TOKEN are required (via vars or injected env)."
+    # Set to true if your NetBox has a valid cert chain and you want TLS verify
+    netbox_validate_certs: false
+    # Page size for NetBox pagination
+    netbox_page_size: 200
 
   tasks:
-    - name: Pull device roles with cf_sla_report_req == true from NetBox
+    - name: Resolve NetBox API creds from vars/env (supports AWX credential injectors)
       set_fact:
-        nb_roles: >-
-          {{ query('netbox.netbox.nb_lookup',
-                   'dcim.device_roles',
-                   api_endpoint=netbox_api,
-                   token=netbox_token,
-                   api_filter='cf_sla_report_req=True') }}
+        nb_api: >-
+          {{ NETBOX_API
+             | default(lookup('env','NETBOX_API'), true)
+             | default(lookup('env','NETBOX_URL'), true) }}
+        nb_token: >-
+          {{ NETBOX_TOKEN
+             | default(lookup('env','NETBOX_TOKEN'), true)
+             | default(lookup('env','NETBOX_API_TOKEN'), true) }}
 
-    - name: Build SLA entries (code + name) from NetBox roles
+    - name: Assert NetBox creds present
+      assert:
+        that:
+          - nb_api is defined and nb_api | length > 0
+          - nb_token is defined and nb_token | length > 0
+        fail_msg: "NetBox credentials not found. Provide NETBOX_API / NETBOX_TOKEN (vars) or use an AWX credential that injects them."
+
+    - name: Normalise NetBox base URL (strip trailing slash)
       set_fact:
-        sla_entries: "{{ (sla_entries | default([])) + [ {
-            'code': ((item.custom_fields.cf_sla_report_code | default(item.slug)) | string),
-            'name': (item.name | string)
-          } ] }}"
-      loop: "{{ nb_roles }}"
+        nb_base: "{{ (nb_api | string) | regex_replace('/+$', '') }}"
+
+    - name: Start NetBox device-role query (cf_sla_report_req=True)
+      uri:
+        url: "{{ nb_base }}/api/dcim/device-roles/?cf_sla_report_req=True&limit={{ netbox_page_size }}"
+        method: GET
+        headers:
+          Authorization: "Token {{ nb_token }}"
+        return_content: true
+        status_code: 200
+        validate_certs: "{{ netbox_validate_certs }}"
+      register: nb_roles_page
+
+    - name: Init roles list & next link
+      set_fact:
+        nb_roles: "{{ nb_roles_page.json.results | default([]) }}"
+        roles_next: "{{ nb_roles_page.json.next | default(None) }}"
+
+    - name: Fetch remaining pages (if any)
+      when: roles_next is not none
+      block:
+        - name: Loop pages until no 'next'
+          uri:
+            url: "{{ roles_next }}"
+            method: GET
+            headers:
+              Authorization: "Token {{ nb_token }}"
+            return_content: true
+            status_code: 200
+            validate_certs: "{{ netbox_validate_certs }}"
+          register: nb_roles_page_loop
+          until: nb_roles_page_loop.json.next is none
+          retries: 100
+          delay: 0
+        - name: Accumulate roles across pages
+          set_fact:
+            nb_roles: >-
+              {{
+                nb_roles
+                + (nb_roles_page_loop.json.results | default([]))
+                + (nb_roles_page_loop.results | default([]) | map(attribute='json') | map(attribute='results') | list | sum(start=[]))
+              }}
+          vars:
+            # nb_roles_page_loop may be either a single result or a list (from until/retries)
+            # The line above accounts for both shapes.
+
+    - name: Build SLA entries from roles (code + name)
+      set_fact:
+        sla_entries: "{{ (sla_entries | default([]))
+                         + [ {
+                             'code': ((item.custom_fields.cf_sla_report_code | default(item.slug)) | string),
+                             'name': (item.name | string)
+                           } ] }}"
+      loop: "{{ nb_roles | default([]) }}"
       when:
         - item is mapping
         - item.custom_fields is defined
@@ -47,7 +94,7 @@
 
     - name: Fail if no SLA entries found
       fail:
-        msg: "No device roles meet cf_sla_report_req=True (nothing to report)."
+        msg: "No device roles with cf_sla_report_req=True found in NetBox."
       when: sla_entries | default([]) | length == 0
 
     - name: Write SLA codes file for the report script
@@ -62,8 +109,8 @@
         ZABBIX_API_TOKEN: "{{ ZABBIX_API_TOKEN }}"
         REPORT_OUTPUT: "{{ report_out }}"
         SLA_CODES_FILE: "{{ sla_codes_path }}"
-        TAG_KEY: "{{ TAG_KEY | default('device') }}"
-        DAYS: "{{ DAYS | default('30') }}"
+        TAG_KEY: "{{ TAG_KEY | default('device', true) }}"
+        DAYS: "{{ DAYS | default('30', true) }}"
       command: python3 zabbix_uptime_report.py
 
     - name: Email the report
