@@ -243,11 +243,11 @@ def write_sheet(df: pd.DataFrame,
     worksheet.write("B6", "Enabled devices", bold)
     worksheet.write_number("C6", summary["enabled_devices"], int_fmt)
 
-    worksheet.write("D6", "Total devices", bold)
-    worksheet.write_number("E6", summary["total_devices"], int_fmt)
+    worksheet.write("B7", "Total devices", bold)
+    worksheet.write_number("C7", summary["total_devices"], int_fmt)
 
     # SLA headline
-    worksheet.write("D2", "SLA - Availability", h1)
+    worksheet.write("E1", "SLA - Availability", h1)
     worksheet.write_number("E2", summary["avg_enabled_availability"] / 100.0, pct_big)
 
     worksheet.write("B4", "Total problems (all)", bold)
