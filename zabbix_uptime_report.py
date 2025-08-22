@@ -175,7 +175,7 @@ def build_dataset_for_code(tag_value: str):
                             })
 
         # Availability % from icmpping history
-        availability = 0.0
+        availability = 0.00
         icmp_items = zabbix_api('item.get', {
             "output": ["itemid", "name", "hostid", "key_"],
             "hostids": [hostid],
