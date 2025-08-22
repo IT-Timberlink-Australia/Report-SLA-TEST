@@ -7,10 +7,8 @@
   vars:
     report_out: "/runner/artifacts/{{ awx_job_id }}/sla_multi_report.xlsx"
     sla_codes_path: "/runner/artifacts/{{ awx_job_id }}/sla_codes.yml"
-    # Set to true if your NetBox has a valid cert chain and you want TLS verify
+    # Flip to true if your NetBox cert chain is valid and should be verified
     netbox_validate_certs: false
-    # Page size for NetBox pagination
-    netbox_page_size: 200
 
   tasks:
     - name: Resolve NetBox API creds from vars/env (supports AWX credential injectors)
@@ -29,64 +27,34 @@
         that:
           - nb_api is defined and nb_api | length > 0
           - nb_token is defined and nb_token | length > 0
-        fail_msg: "NetBox credentials not found. Provide NETBOX_API / NETBOX_TOKEN (vars) or use an AWX credential that injects them."
+        fail_msg: "NetBox credentials not found. Provide NETBOX_API/NETBOX_TOKEN (vars) or use an AWX credential that injects them."
 
     - name: Normalise NetBox base URL (strip trailing slash)
       set_fact:
         nb_base: "{{ (nb_api | string) | regex_replace('/+$', '') }}"
 
-    - name: Start NetBox device-role query (cf_sla_report_req=True)
+    - name: Query NetBox device roles with SLA flag (single page, limit=0)
       uri:
-        url: "{{ nb_base }}/api/dcim/device-roles/?cf_sla_report_req=True&limit={{ netbox_page_size }}"
+        url: "{{ nb_base }}/api/dcim/device-roles/?cf_sla_report_req=True&limit=0"
         method: GET
         headers:
           Authorization: "Token {{ nb_token }}"
         return_content: true
         status_code: 200
         validate_certs: "{{ netbox_validate_certs }}"
-      register: nb_roles_page
+      register: nb_roles_resp
 
-    - name: Init roles list & next link
+    - name: Extract roles list
       set_fact:
-        nb_roles: "{{ nb_roles_page.json.results | default([]) }}"
-        roles_next: "{{ nb_roles_page.json.next | default(None) }}"
+        nb_roles: "{{ nb_roles_resp.json.results | default([]) }}"
 
-    - name: Fetch remaining pages (if any)
-      when: roles_next is not none
-      block:
-        - name: Loop pages until no 'next'
-          uri:
-            url: "{{ roles_next }}"
-            method: GET
-            headers:
-              Authorization: "Token {{ nb_token }}"
-            return_content: true
-            status_code: 200
-            validate_certs: "{{ netbox_validate_certs }}"
-          register: nb_roles_page_loop
-          until: nb_roles_page_loop.json.next is none
-          retries: 100
-          delay: 0
-        - name: Accumulate roles across pages
-          set_fact:
-            nb_roles: >-
-              {{
-                nb_roles
-                + (nb_roles_page_loop.json.results | default([]))
-                + (nb_roles_page_loop.results | default([]) | map(attribute='json') | map(attribute='results') | list | sum(start=[]))
-              }}
-          vars:
-            # nb_roles_page_loop may be either a single result or a list (from until/retries)
-            # The line above accounts for both shapes.
-
-    - name: Build SLA entries from roles (code + name)
+    - name: Build SLA entries (code + name) from roles
       set_fact:
-        sla_entries: "{{ (sla_entries | default([]))
-                         + [ {
-                             'code': ((item.custom_fields.cf_sla_report_code | default(item.slug)) | string),
-                             'name': (item.name | string)
-                           } ] }}"
-      loop: "{{ nb_roles | default([]) }}"
+        sla_entries: "{{ (sla_entries | default([])) + [ {
+                         'code': ((item.custom_fields.cf_sla_report_code | default(item.slug)) | string),
+                         'name': (item.name | string)
+                       } ] }}"
+      loop: "{{ nb_roles }}"
       when:
         - item is mapping
         - item.custom_fields is defined
