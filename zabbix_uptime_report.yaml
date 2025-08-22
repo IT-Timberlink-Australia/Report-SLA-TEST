@@ -10,31 +10,39 @@
     report_out: "/runner/artifacts/{{ awx_job_id }}/sla_multi_report.xlsx"
     sla_codes_path: "/runner/artifacts/{{ awx_job_id }}/sla_codes.yml"
 
-  tasks:
-    - name: Assert NetBox creds present
+  pre_tasks:
+    - name: Resolve NetBox API endpoint/token from vars or env (credential)
+      set_fact:
+        netbox_api: "{{ NETBOX_API | default(lookup('env','NETBOX_API'), true) }}"
+        netbox_token: "{{ NETBOX_TOKEN | default(lookup('env','NETBOX_TOKEN'), true) }}"
+
+    - name: Assert NetBox creds are present
       assert:
         that:
-          - NETBOX_API is defined
-          - NETBOX_TOKEN is defined
-        fail_msg: "NETBOX_API / NETBOX_TOKEN are required."
+          - (netbox_api | length) > 0
+          - (netbox_token | length) > 0
+        fail_msg: "NETBOX_API / NETBOX_TOKEN are required (via vars or injected env)."
 
+  tasks:
     - name: Pull device roles with cf_sla_report_req == true from NetBox
       set_fact:
         nb_roles: >-
           {{ query('netbox.netbox.nb_lookup',
                    'dcim.device_roles',
-                   api_endpoint=NETBOX_API,
-                   token=NETBOX_TOKEN,
+                   api_endpoint=netbox_api,
+                   token=netbox_token,
                    api_filter='cf_sla_report_req=True') }}
 
     - name: Build SLA entries (code + name) from NetBox roles
       set_fact:
-        sla_entries: "{{ (sla_entries | default([])) + [ {'code': ((item.custom_fields.cf_sla_report_code | default(item.slug)) | string),
-                                                          'name': (item.name | string)} ] }}"
+        sla_entries: "{{ (sla_entries | default([])) + [ {
+            'code': ((item.custom_fields.cf_sla_report_code | default(item.slug)) | string),
+            'name': (item.name | string)
+          } ] }}"
       loop: "{{ nb_roles }}"
       when:
         - item is mapping
-        - (item.custom_fields is defined)
+        - item.custom_fields is defined
         - (item.custom_fields.cf_sla_report_req | default(false)) | bool
 
     - name: Fail if no SLA entries found
