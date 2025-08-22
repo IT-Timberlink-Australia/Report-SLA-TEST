@@ -300,7 +300,6 @@ def write_summary_sheet(writer: pd.ExcelWriter, rows: list):
     pct2_b  = workbook.add_format({"num_format": "0.00%", "bold": True})
 
     ws.write("A1", "SLA Availability Summary", h1)
-    ws.write("A3", f"Report Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", workbook.add_format({"bold": True}))
 
     # Format the percentage column as % after writing
     ws.set_column(0, 0, 40)                 # Group
