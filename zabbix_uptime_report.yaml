@@ -22,15 +22,9 @@
             - code: ebk.svr
               name: Backup Server (EBK)
             - code: ecs.net
-              name: Camera Security (ECS)
-            - code: edb.svr
               name: Database Server (EDB)
-            - code: ela.ows
-              name: Enterprise Laptop (ELA)
             - code: efs.svr
               name: File Server (EFS)
-            - code: egw.net
-              name: Gateway/Router (EGW)
             - code: ens.sto
               name: Network Attached Storage (ENS)
             - code: esc.net
