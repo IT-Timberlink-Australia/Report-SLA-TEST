@@ -68,7 +68,8 @@
         port: 25
         to: "{{ (email_recipients | default(email_recipients_default) | default([])) | join(', ') }}"
         from: awx@timberlinkaustralia.com.au
-        subject: "SLA Multi-Report ({{ ansible_date_time.date }})"
+        subject: "SLA Multi-Report ({{ lookup('pipe','date +%Y-%m-%d') }})"
         body: "Attached is the latest multi-sheet SLA report."
         attach:
           - "{{ report_out }}"
+
