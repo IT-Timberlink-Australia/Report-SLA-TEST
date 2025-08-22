@@ -21,7 +21,7 @@
               name: Application Server (EAP)
             - code: ebk.svr
               name: Backup Server (EBK)
-            - code: ecs.net
+            - code: edb.svr
               name: Database Server (EDB)
             - code: efs.svr
               name: File Server (EFS)

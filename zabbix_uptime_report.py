@@ -220,7 +220,7 @@ def build_dataset_for_code(tag_value: str, start: int, now: int, window_seconds:
 
         results.append({
             "Hostname": hostmap[hostid],
-            "Availability %": round(availability, 2),
+            "Availability %": round(availability, 3),
             "Problems Raised": problem_count_resolved,
             "Total Downtime (min)": round(downtime_total_resolved / 60),
             "Enabled": "Yes" if host_enabled.get(hostid, True) else "No"
@@ -247,10 +247,18 @@ def write_sheet(df: pd.DataFrame,
     bold = workbook.add_format({"bold": True})
     pct2 = workbook.add_format({"num_format": "0.00%"})  # percentage format
     int_fmt = workbook.add_format({"num_format": "0"})
+    pct_big = workbook.add_format({
+    "bold": True,
+    "font_size": 16,
+    "align": "center",
+    "num_format": "0.00%"
+})
 
     # Headers & summary
     worksheet.write("A1", f"SLA Availability Report — {sheet_title}", h1)
     worksheet.write("A3", f"Time Frame: last {DAYS} days")
+
+    worksheet.write("A5", f"Report Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", bold)
 
     worksheet.write("B6", "Enabled devices", bold)
     worksheet.write_number("C6", summary["enabled_devices"], int_fmt)
@@ -259,8 +267,8 @@ def write_sheet(df: pd.DataFrame,
     worksheet.write_number("C7", summary["total_devices"], int_fmt)
 
     # >>> changed block <<<
-    worksheet.write("D2", "SLA - Availability", h1)     # bigger + bold
-    worksheet.write_number("E2", summary["avg_enabled_availability"]/100.0, pct2)
+    worksheet.write("E1", "SLA - Availability", h1)     # bigger + bold
+    worksheet.write_number("E2", summary["avg_enabled_availability"]/100.0, pct_big)
     # divide by 100 because we store it as 99.85 not 0.9985
     # <<<<<<<<<<<<<<<<<<<<<<
 
@@ -345,7 +353,7 @@ def main():
             total_devices = len(df_full)
             enabled_count = int((df_full["Enabled"] == "Yes").sum()) if not df_full.empty else 0
             enabled_avail = df_full.loc[df_full["Enabled"] == "Yes", "Availability %"] if not df_full.empty else pd.Series(dtype=float)
-            avg_enabled_avail = round(float(enabled_avail.mean()), 2) if not enabled_avail.empty else 0.0
+            avg_enabled_avail = round(float(enabled_avail.mean()), 3) if not enabled_avail.empty else 0.0
             problems_total = int(df_full["Problems Raised"].sum()) if not df_full.empty else 0
             downtime_total_min = int(df_full["Total Downtime (min)"].sum()) if not df_full.empty else 0
 
