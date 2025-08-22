@@ -206,7 +206,7 @@ def build_dataset_for_code(tag_value: str, start: int, now: int, window_seconds:
 
         results.append({
             "Hostname": hostmap[hostid],
-            "Availability %": round(availability, 2),
+            "Availability %": round(availability, 3),
             "Problems Raised": problem_count_resolved,
             "Total Downtime (min)": round(downtime_total_resolved / 60),
             "Enabled": "Yes" if host_enabled.get(hostid, True) else "No"
@@ -238,17 +238,17 @@ def write_sheet(df: pd.DataFrame,
 
     # Header block
     worksheet.write("A1", f"SLA Availability Report — {sheet_title}", h1)
-    worksheet.write("A3", f"Time Frame: last {DAYS} days")
+    worksheet.write("A3", f"Time Frame: last {DAYS} days", bold)
     worksheet.write("A5", f"Report Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", bold)
 
     worksheet.write("B6", "Enabled devices", bold)
     worksheet.write_number("C6", summary["enabled_devices"], int_fmt)
 
-    worksheet.write("D6", "Total devices", bold)
-    worksheet.write_number("E6", summary["total_devices"], int_fmt)
+    worksheet.write("B7", "Total devices", bold)
+    worksheet.write_number("C7", summary["total_devices"], int_fmt)
 
     # SLA headline
-    worksheet.write("D2", "SLA - Availability", h1)
+    worksheet.write("E1", "SLA - Availability", h1)
     worksheet.write_number("E2", summary["avg_enabled_availability"] / 100.0, pct_big)
 
     worksheet.write("B4", "Total problems (all)", bold)
