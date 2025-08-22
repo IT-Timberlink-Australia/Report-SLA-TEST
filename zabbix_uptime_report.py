@@ -288,10 +288,10 @@ def write_summary_sheet(writer: pd.ExcelWriter, rows: list):
     rows: list of dicts:
       { 'name': str, 'availability_frac': float (0..1), 'enabled_count': int }
     Layout:
-      A1: heading
+      A6: heading
       A3: Report Date
       A4: Time Frame
-      Table headers on row 5; data from row 6
+      Headers row 7; data from row 8
     """
     sheet_name = "Summary"
     workbook = writer.book
@@ -302,32 +302,53 @@ def write_summary_sheet(writer: pd.ExcelWriter, rows: list):
     hdr  = workbook.add_format({"bold": True, "bg_color": "#D9D9D9"})
     pct  = workbook.add_format({"num_format": "0.00%", "align": "center"})
     ctr  = workbook.add_format({"align": "center"})
+    fmt_orange = workbook.add_format({"bg_color": "#FABF8F", "font_color": "#000000"})
+    fmt_red    = workbook.add_format({"bg_color": "#E6B8B7", "font_color": "#000000", "bold": True})
 
-    # Heading + meta
-    ws.write("A1", "SLA Availability Summary", h1)
+    # Meta
     ws.write("A3", f"Report Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     ws.write("A4", f"Time Frame: last {DAYS} days")
 
-    # Headers at row 5 (0-indexed row 4)
-    ws.write("A5", "SLA Group", hdr)
-    ws.write("B5", "SLA - Availability", hdr)
-    ws.write("C5", "Enabled Devices", hdr)
+    # Heading moved to line 6
+    ws.write("A6", "SLA Availability Summary", h1)
 
-    # Data rows start row 6 (0-indexed row 5)
-    r = 5
-    # Sort alphabetically by group name; change to availability sort if desired
+    # Headers at row 7 (index 6)
+    ws.write("A7", "SLA Group", hdr)
+    ws.write("B7", "SLA - Availability", hdr)
+    ws.write("C7", "Enabled Devices", hdr)
+
+    # Data rows start at row 8 (index 7)
+    data_start_row = 7
+    r = data_start_row
     for entry in sorted(rows, key=lambda x: x['name']):
+        r += 1
         ws.write(r, 0, entry['name'])
         ws.write_number(r, 1, float(entry['availability_frac']), pct)
         ws.write_number(r, 2, int(entry['enabled_count']), ctr)
-        r += 1
 
     # Column widths
     ws.set_column("A:A", 40)
     ws.set_column("B:B", 22, pct)
     ws.set_column("C:C", 18, ctr)
 
-    ws.freeze_panes(6, 0)  # freeze just below header row
+    # Conditional formatting across the entire data row range
+    last_row = r  # current last written row index
+    if last_row > data_start_row:
+        # Orange for 95% < SLA < 100%
+        ws.conditional_format(data_start_row + 1, 0, last_row, 2, {
+            "type": "formula",
+            "criteria": "=AND($B{row}<1,$B{row}>0.95)".format(row=data_start_row + 2),  # Excel will adjust per-row
+            "format": fmt_orange
+        })
+        # Red + bold for SLA < 95%
+        ws.conditional_format(data_start_row + 1, 0, last_row, 2, {
+            "type": "formula",
+            "criteria": "=$B{row}<0.95".format(row=data_start_row + 2),
+            "format": fmt_red
+        })
+
+    # Freeze below header row
+    ws.freeze_panes(7, 0)
 
 # -------- Main --------
 def main():
@@ -342,7 +363,6 @@ def main():
         raise SystemExit(f"No 'sla_report_codes' found in {SLA_CODES_FILE}")
 
     with pd.ExcelWriter(OUTPUT_FILE, engine="xlsxwriter") as writer:
-        # We'll add Summary as a new worksheet with our custom layout
         summary_rows = []
 
         for entry in entries:
@@ -362,7 +382,7 @@ def main():
             problems_total = int(df_full["Problems Raised"].sum()) if not df_full.empty else 0
             downtime_total_min = int(df_full["Total Downtime (min)"].sum()) if not df_full.empty else 0
 
-            # For Summary sheet: store fraction for % formatting and enabled device count
+            # Summary row (availability as fraction for % formatting)
             summary_rows.append({
                 "name": name,
                 "availability_frac": (avg_enabled_avail / 100.0),
