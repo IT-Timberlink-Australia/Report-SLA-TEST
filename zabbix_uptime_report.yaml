@@ -10,6 +10,7 @@
     netbox_validate_certs: false  # set true if your NetBox certs are valid
 
   tasks:
+    # --- NetBox creds ---
     - name: Resolve NetBox API creds
       set_fact:
         nb_api: >-
@@ -32,6 +33,26 @@
       set_fact:
         nb_base: "{{ (nb_api | string) | regex_replace('/+$', '') }}"
 
+    # --- Zabbix creds (THIS WAS MISSING) ---
+    - name: Resolve Zabbix API creds
+      set_fact:
+        zb_url: >-
+          {{ ZABBIX_API_URL
+             | default(lookup('env','ZABBIX_API_URL'), true)
+             | default(lookup('env','ZABBIX_URL'), true) }}
+        zb_token: >-
+          {{ ZABBIX_API_TOKEN
+             | default(lookup('env','ZABBIX_API_TOKEN'), true)
+             | default(lookup('env','ZABBIX_TOKEN'), true) }}
+
+    - name: Assert Zabbix creds present
+      assert:
+        that:
+          - zb_url is defined and zb_url | length > 0
+          - zb_token is defined and zb_token | length > 0
+        fail_msg: "Zabbix creds not found. Provide ZABBIX_API_URL/ZABBIX_API_TOKEN (vars) or use an AWX credential that injects them."
+
+    # --- Pull roles from NetBox ---
     - name: Query ALL device roles (include custom_fields)
       uri:
         url: "{{ nb_base }}/api/dcim/device-roles/?limit=0&include=custom_fields"
@@ -81,10 +102,11 @@
         mode: "0644"
         content: "{{ {'sla_report_codes': sla_entries} | to_nice_yaml(indent=2) }}"
 
+    # --- Run the Python report with ALL required env vars ---
     - name: Run uptime report script (multi-sheet; SLA list from NetBox)
       environment:
-        ZABBIX_API_URL: "{{ ZABBIX_API_URL }}"
-        ZABBIX_API_TOKEN: "{{ ZABBIX_API_TOKEN }}"
+        ZABBIX_API_URL: "{{ zb_url }}"
+        ZABBIX_API_TOKEN: "{{ zb_token }}"
         REPORT_OUTPUT: "{{ report_out }}"
         SLA_CODES_FILE: "{{ sla_codes_path }}"
         TAG_KEY: "{{ TAG_KEY | default('device', true) }}"
