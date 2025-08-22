@@ -222,8 +222,8 @@ def main():
             summary = {"total_devices":total_devices,"enabled_devices":enabled_count,
                        "avg_enabled_availability":avg_enabled_avail,"problems_total":problems_total,
                        "downtime_total_min":downtime_total_min}
-            sheet_title = sanitize_sheet_name(name)
-            write_sheet(df_export, problem_details, writer, summary, sheet_title=sheet_title)
+            safe_title = sanitize_sheet_name(name)
+            write_sheet(df_export, problem_details, writer, summary, sheet_title=safe_title)
         write_summary_sheet(writer, summary_rows)
     print(f"Excel report written to {OUTPUT_FILE}")
 
