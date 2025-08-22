@@ -55,7 +55,10 @@ def zabbix_api(method, params):
     return out['result']
 
 def sanitize_sheet_name(name: str) -> str:
+    # Replace Excel-invalid chars with underscore
     name = re.sub(r'[:\\/?*\\[\\]]', '_', name)
+    # Optionally remove parentheses
+    name = name.replace("(", "").replace(")", "")
     return name[:31]
 
 def build_dataset_for_code(tag_value: str):
@@ -219,7 +222,8 @@ def main():
             summary = {"total_devices":total_devices,"enabled_devices":enabled_count,
                        "avg_enabled_availability":avg_enabled_avail,"problems_total":problems_total,
                        "downtime_total_min":downtime_total_min}
-            write_sheet(df_export, problem_details, writer, summary, sheet_title=name)
+            sheet_title = sanitize_sheet_name(name)
+            write_sheet(df_export, problem_details, writer, summary, sheet_title=sheet_title)
         write_summary_sheet(writer, summary_rows)
     print(f"Excel report written to {OUTPUT_FILE}")
 
