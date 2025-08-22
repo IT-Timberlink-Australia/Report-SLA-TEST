@@ -5,7 +5,7 @@ import pandas as pd
 import urllib3
 import yaml
 from datetime import datetime
-import datetime as dt  # keep as alias for epoch math
+import datetime as dt  # alias for epoch math
 
 # Silence TLS warnings due to verify=False
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -114,7 +114,7 @@ def build_dataset_for_code(tag_value: str, start: int, now: int, window_seconds:
 
     hostids = [h["hostid"] for h in hosts]
     hostmap = {h["hostid"]: h["name"] for h in hosts}
-    host_enabled = {h["hostid"]: (str(h.get("status", "0")) == "0") for h in hosts}  # 0 = enabled, 1 = disabled
+    host_enabled = {h["hostid"]:(str(h.get("status","0"))=="0") for h in hosts}  # 0=enabled, 1=disabled
 
     results = []
     problem_details = []
@@ -206,7 +206,7 @@ def build_dataset_for_code(tag_value: str, start: int, now: int, window_seconds:
 
         results.append({
             "Hostname": hostmap[hostid],
-            "Availability %": round(availability, 3),
+            "Availability %": round(availability, 2),
             "Problems Raised": problem_count_resolved,
             "Total Downtime (min)": round(downtime_total_resolved / 60),
             "Enabled": "Yes" if host_enabled.get(hostid, True) else "No"
@@ -233,22 +233,21 @@ def write_sheet(df: pd.DataFrame,
     h1       = workbook.add_format({"bold": True, "font_size": 16})
     bold     = workbook.add_format({"bold": True})
     pct_big  = workbook.add_format({"bold": True, "font_size": 16, "num_format": "0.00%", "align": "center", "valign": "vcenter"})
-    pct2     = workbook.add_format({"num_format": "0.00%"})
     int_fmt  = workbook.add_format({"num_format": "0"})
 
     # Header block
     worksheet.write("A1", f"SLA Availability Report — {sheet_title}", h1)
-    worksheet.write("A3", f"Time Frame: last {DAYS} days", bold)
+    worksheet.write("A3", f"Time Frame: last {DAYS} days")
     worksheet.write("A5", f"Report Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", bold)
 
     worksheet.write("B6", "Enabled devices", bold)
     worksheet.write_number("C6", summary["enabled_devices"], int_fmt)
 
-    worksheet.write("B7", "Total devices", bold)
-    worksheet.write_number("C7", summary["total_devices"], int_fmt)
+    worksheet.write("D6", "Total devices", bold)
+    worksheet.write_number("E6", summary["total_devices"], int_fmt)
 
     # SLA headline
-    worksheet.write("E1", "SLA - Availability", h1)
+    worksheet.write("D2", "SLA - Availability", h1)
     worksheet.write_number("E2", summary["avg_enabled_availability"] / 100.0, pct_big)
 
     worksheet.write("B4", "Total problems (all)", bold)
@@ -285,27 +284,50 @@ def write_sheet(df: pd.DataFrame,
     worksheet.freeze_panes(11, 0)
 
 def write_summary_sheet(writer: pd.ExcelWriter, rows: list):
+    """
+    rows: list of dicts:
+      { 'name': str, 'availability_frac': float (0..1), 'enabled_count': int }
+    Layout:
+      A1: heading
+      A3: Report Date
+      A4: Time Frame
+      Table headers on row 5; data from row 6
+    """
     sheet_name = "Summary"
-    df_sum = pd.DataFrame(rows, columns=["Group", "SLA - Availability"])
-    # Sort by name; flip to availability asc if you prefer:
-    df_sum.sort_values(by="Group", inplace=True, kind="stable")
-    df_sum.reset_index(drop=True, inplace=True)
-    df_sum.to_excel(writer, sheet_name=sheet_name, startrow=0, index=False)
-
     workbook = writer.book
-    ws = writer.sheets[sheet_name]
+    ws = workbook.add_worksheet(sheet_name)
 
-    h1      = workbook.add_format({"bold": True, "font_size": 16})
-    pct2    = workbook.add_format({"num_format": "0.00%"})
-    pct2_b  = workbook.add_format({"num_format": "0.00%", "bold": True})
+    # Formats
+    h1   = workbook.add_format({"bold": True, "font_size": 16})
+    hdr  = workbook.add_format({"bold": True, "bg_color": "#D9D9D9"})
+    pct  = workbook.add_format({"num_format": "0.00%", "align": "center"})
+    ctr  = workbook.add_format({"align": "center"})
 
+    # Heading + meta
     ws.write("A1", "SLA Availability Summary", h1)
+    ws.write("A3", f"Report Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    ws.write("A4", f"Time Frame: last {DAYS} days")
 
-    # Format the percentage column as % after writing
-    ws.set_column(0, 0, 40)                 # Group
-    ws.set_column(1, 1, 22, pct2)           # SLA - Availability as %
+    # Headers at row 5 (0-indexed row 4)
+    ws.write("A5", "SLA Group", hdr)
+    ws.write("B5", "SLA - Availability", hdr)
+    ws.write("C5", "Enabled Devices", hdr)
 
-    ws.freeze_panes(1, 0)
+    # Data rows start row 6 (0-indexed row 5)
+    r = 5
+    # Sort alphabetically by group name; change to availability sort if desired
+    for entry in sorted(rows, key=lambda x: x['name']):
+        ws.write(r, 0, entry['name'])
+        ws.write_number(r, 1, float(entry['availability_frac']), pct)
+        ws.write_number(r, 2, int(entry['enabled_count']), ctr)
+        r += 1
+
+    # Column widths
+    ws.set_column("A:A", 40)
+    ws.set_column("B:B", 22, pct)
+    ws.set_column("C:C", 18, ctr)
+
+    ws.freeze_panes(6, 0)  # freeze just below header row
 
 # -------- Main --------
 def main():
@@ -320,7 +342,7 @@ def main():
         raise SystemExit(f"No 'sla_report_codes' found in {SLA_CODES_FILE}")
 
     with pd.ExcelWriter(OUTPUT_FILE, engine="xlsxwriter") as writer:
-        writer.book.add_worksheet("Summary")  # placeholder
+        # We'll add Summary as a new worksheet with our custom layout
         summary_rows = []
 
         for entry in entries:
@@ -340,8 +362,12 @@ def main():
             problems_total = int(df_full["Problems Raised"].sum()) if not df_full.empty else 0
             downtime_total_min = int(df_full["Total Downtime (min)"].sum()) if not df_full.empty else 0
 
-            # For the Summary sheet (store as fraction for % formatting there)
-            summary_rows.append([name, avg_enabled_avail / 100.0])
+            # For Summary sheet: store fraction for % formatting and enabled device count
+            summary_rows.append({
+                "name": name,
+                "availability_frac": (avg_enabled_avail / 100.0),
+                "enabled_count": enabled_count
+            })
 
             # Export only hosts with incidents
             if not df_full.empty:
@@ -365,6 +391,7 @@ def main():
             safe_title = sanitize_sheet_name(name or code)
             write_sheet(df_export, problem_details, writer, summary, sheet_title=safe_title)
 
+        # Write the Summary sheet last
         write_summary_sheet(writer, summary_rows)
 
     print(f"Excel report written to {OUTPUT_FILE}")
