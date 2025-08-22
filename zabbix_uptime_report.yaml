@@ -1,5 +1,5 @@
 ---
-- name: Zabbix SLA Multi-Report (NetBox 4.3.4 via API)
+- name: Zabbix SLA Multi-Report (NetBox 4.3.4, CF keys fixed)
   hosts: localhost
   gather_facts: false
   connection: local
@@ -7,7 +7,7 @@
   vars:
     report_out: "/runner/artifacts/{{ awx_job_id }}/sla_multi_report.xlsx"
     sla_codes_path: "/runner/artifacts/{{ awx_job_id }}/sla_codes.yml"
-    netbox_validate_certs: false  # set true if your certs are valid
+    netbox_validate_certs: false  # set true if your NetBox certs are valid
 
   tasks:
     - name: Resolve NetBox API creds from vars/env (supports AWX credential injectors)
@@ -32,9 +32,9 @@
       set_fact:
         nb_base: "{{ (nb_api | string) | regex_replace('/+$', '') }}"
 
-    - name: Query NetBox device roles with SLA flag (limit=0; include CFs if supported)
+    - name: Query ALL device roles (include custom_fields)
       uri:
-        url: "{{ nb_base }}/api/dcim/device-roles/?cf_sla_report_req=True&limit=0&include=custom_fields"
+        url: "{{ nb_base }}/api/dcim/device-roles/?limit=0&include=custom_fields"
         method: GET
         headers:
           Authorization: "Token {{ nb_token }}"
@@ -43,30 +43,30 @@
         validate_certs: "{{ netbox_validate_certs }}"
       register: nb_roles_page
 
-    - name: Extract roles (safe default)
+    - name: Extract roles array
       set_fact:
         nb_roles: "{{ nb_roles_page.json.results | default([]) }}"
 
-    # Optional: uncomment to see exactly what NetBox returns
+    # Uncomment to inspect one example object if needed
     # - debug:
-    #     var: nb_roles
+    #     var: nb_roles[0]
 
-    - name: Build SLA entries from roles (safe even if custom_fields missing)
+    - name: Build SLA entries from roles (require sla_report_req == true)
       vars:
         cf: "{{ item.custom_fields | default({}) }}"
       set_fact:
         sla_entries: "{{ (sla_entries | default([])) + [ {
-                         'code': (cf.cf_sla_report_code | default(item.slug) | string),
+                         'code': (cf.sla_report_code | default(item.slug) | string),
                          'name': (item.name | string)
                        } ] }}"
       loop: "{{ nb_roles }}"
       when:
         - item is mapping
-        - (cf.cf_sla_report_req | default(false)) | bool
+        - (cf.sla_report_req | default(false)) | bool
 
     - name: Fail if no SLA entries found
       fail:
-        msg: "No device roles with cf_sla_report_req=True found in NetBox."
+        msg: "No device roles with custom_fields.sla_report_req == true found in NetBox."
       when: sla_entries | default([]) | length == 0
 
     - name: Write SLA codes file for the report script
