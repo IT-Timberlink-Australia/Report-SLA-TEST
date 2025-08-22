@@ -1,5 +1,5 @@
 ---
-- name: Zabbix SLA Multi-Report (NetBox 4.3.4, CF keys fixed)
+- name: Zabbix SLA Multi-Report (NetBox 4.3.4, correct CFs)
   hosts: localhost
   gather_facts: false
   connection: local
@@ -7,28 +7,28 @@
   vars:
     report_out: "/runner/artifacts/{{ awx_job_id }}/sla_multi_report.xlsx"
     sla_codes_path: "/runner/artifacts/{{ awx_job_id }}/sla_codes.yml"
-    netbox_validate_certs: false 
+    netbox_validate_certs: false  # set true if your NetBox certs are valid
 
   tasks:
     - name: Resolve NetBox API creds
       set_fact:
         nb_api: >-
           {{ NETBOX_API
-            | default(lookup('env','NETBOX_API'), true)
-            | default(lookup('env','NETBOX_URL'), true) }}
+             | default(lookup('env','NETBOX_API'), true)
+             | default(lookup('env','NETBOX_URL'), true) }}
         nb_token: >-
           {{ NETBOX_TOKEN
-            | default(lookup('env','NETBOX_TOKEN'), true)
-            | default(lookup('env','NETBOX_API_TOKEN'), true) }}
+             | default(lookup('env','NETBOX_TOKEN'), true)
+             | default(lookup('env','NETBOX_API_TOKEN'), true) }}
 
     - name: Assert NetBox creds present
       assert:
         that:
           - nb_api is defined and nb_api | length > 0
           - nb_token is defined and nb_token | length > 0
-        fail_msg: "NetBox creds not found. Provide NETBOX_API/NETBOX_TOKEN or use an AWX credential that injects them."
+        fail_msg: "NetBox creds not found. Provide NETBOX_API/NETBOX_TOKEN (vars) or use an AWX credential that injects them."
 
-    - name: Normalise NetBox base URL
+    - name: Normalise NetBox base URL (strip trailing slash)
       set_fact:
         nb_base: "{{ (nb_api | string) | regex_replace('/+$', '') }}"
 
@@ -40,25 +40,35 @@
           Authorization: "Token {{ nb_token }}"
         return_content: true
         status_code: 200
-        validate_certs: false
+        validate_certs: "{{ netbox_validate_certs }}"
       register: nb_roles_page
 
     - name: Extract roles
       set_fact:
         nb_roles: "{{ nb_roles_page.json.results | default([]) }}"
 
-    - name: Build SLA entries from roles
-      vars:
-        cf: "{{ item.custom_fields | default({}) }}"
+    - name: Select roles flagged for SLA reporting
       set_fact:
-        sla_entries: "{{ (sla_entries | default([])) + [ {
-                        'code': (cf.sla_report_code | default(item.slug) | string),
-                        'name': (item.name | string)
-                      } ] }}"
-      loop: "{{ nb_roles }}"
-      when:
-        - item is mapping
-        - (cf.sla_report_req | default(false)) | bool
+        roles_flagged: >-
+          {{ nb_roles
+             | selectattr('custom_fields', 'defined')
+             | selectattr('custom_fields.sla_report_req', 'equalto', true)
+             | list }}
+
+    - name: Debug counts (sanity check)
+      debug:
+        msg:
+          - "Total roles returned: {{ nb_roles | length }}"
+          - "Roles with custom_fields.sla_report_req == true: {{ roles_flagged | length }}"
+          - "First 5 flagged: {{ roles_flagged[:5] | map(attribute='name') | list }}"
+
+    - name: Build SLA entries from flagged roles
+      set_fact:
+        sla_entries: "{{ (sla_entries | default([]))
+                         + [ { 'code': (item.custom_fields.sla_report_code | default(item.slug) | string),
+                               'name': (item.name | string) } ] }}"
+      loop: "{{ roles_flagged }}"
+      when: item is mapping
 
     - name: Fail if no SLA entries found
       fail:
